@@ -1,5 +1,4 @@
-// handles token CRD
-package token
+package tokenizer
 
 import (
 	"errors"
