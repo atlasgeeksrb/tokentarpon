@@ -1,4 +1,4 @@
-package crypto
+package tokencrypto
 
 import (
 	"crypto/aes"
