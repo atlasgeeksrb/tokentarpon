@@ -21,7 +21,7 @@ TokenTarpon is an API providing tokenization with optional encryption. Calling a
 - GET tokens for domain tokens/tokens/:domainId
 - POST a query to get multiple token values /tokens/:domainId/values
 
-The last two routes, to get tokens and get token values, optionally takey start and limit parameters in the querystring for pagination.
+The last two routes, to get tokens and get token values, optionally take start and limit parameters in the querystring for pagination.
 
 ## Modifying
 Please refer to the LICENSE
