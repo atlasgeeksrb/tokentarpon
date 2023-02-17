@@ -21,7 +21,7 @@ type Token struct {
 	DomainUuid     string `bson:"domainUuid" json:"domainUuid"`
 	Value          string `bson:"value" json:"value"`
 	EncryptedValue string `bson:"encryptedValue" json:"encryptedValue"`
-	IsDeleted      bool   `json:"isdeleted" bson:"isdeleted"`
+	IsDeleted      bool   `json:"isDeleted" bson:"isDeleted"`
 	DocumentType   string `bson:"documentType" json:"documentType"`
 	Version        string `bson:"version" json:"version"`
 	Created        int64  `json:"created" bson:"created"`
@@ -58,7 +58,9 @@ var (
 	ErrNoMatchingToken = errors.New("no token found for provided domain and token id")
 )
 
-func CreateToken(collectionName string, domainUuid string, value string) (Token, error) {
+var CollectionName string = "community"
+
+func CreateToken(domainUuid string, value string) (Token, error) {
 	var tok Token
 
 	err := errors.New("data: token incomplete, need domain id, value")
@@ -78,22 +80,15 @@ func CreateToken(collectionName string, domainUuid string, value string) (Token,
 		return tok, nil
 	}
 
-	datastore.CollectionName = collectionName
-	result, errInsert := datastore.InsertRecord(tokenRecordType, tok)
-	if errInsert != nil {
-		return tok, errInsert
-	} else if nil == result {
-		return tok, datastore.ErrNotFound
-	} else {
-		insertedToken := result.(Token)
-		return insertedToken, nil
-	}
+	datastore.CollectionName = CollectionName
+	errInsert := datastore.InsertRecord(tokenRecordType, tok)
+	return tok, errInsert
 }
 
-func CreateTokens(collectionName, domainUuid string, tokens []Token) ([]Token, []TokenError) {
+func CreateTokens(domainUuid string, tokens []Token) ([]Token, []TokenError) {
 	var createdTokens []Token
 	var errorTokens []TokenError
-	datastore.CollectionName = collectionName
+	datastore.CollectionName = CollectionName
 
 	for _, tokenObj := range tokens {
 		if len(strings.TrimSpace(tokenObj.DomainUuid)) == 0 {
@@ -113,17 +108,13 @@ func CreateTokens(collectionName, domainUuid string, tokens []Token) ([]Token, [
 			if UnitTest {
 				createdTokens = append(createdTokens, tokenObj)
 			} else {
-				result, errInsert := datastore.InsertRecord(tokenRecordType, tokenObj)
+				errInsert := datastore.InsertRecord(tokenRecordType, &tokenObj)
 				if errInsert != nil {
 					errmsg := fmt.Sprint(errInsert)
 					e := TokenError{Token: tokenObj, Error: errmsg}
 					errorTokens = append(errorTokens, e)
-				} else if nil == result {
-					e := TokenError{Token: tokenObj, Error: "The token was inserted but not returned"}
-					errorTokens = append(errorTokens, e)
 				} else {
-					tok := result.(Token)
-					createdTokens = append(createdTokens, tok)
+					createdTokens = append(createdTokens, tokenObj)
 				}
 			}
 		}
@@ -131,7 +122,7 @@ func CreateTokens(collectionName, domainUuid string, tokens []Token) ([]Token, [
 	return createdTokens, errorTokens
 }
 
-func GetToken(collectionName string, domainUuid string, tokenUuid string) (Token, error) {
+func GetToken(domainUuid string, tokenUuid string) (Token, error) {
 	var tok Token
 	err := errors.New("data: need domain id, token id")
 	if len(strings.TrimSpace(domainUuid)) == 0 {
@@ -148,39 +139,39 @@ func GetToken(collectionName string, domainUuid string, tokenUuid string) (Token
 	}
 
 	filter := datastore.MakeDomainQuery(domainUuid, "uuid", tokenUuid, true)
-	datastore.CollectionName = collectionName
-	result, err := datastore.GetRecord(tokenRecordType, filter)
-	if err == nil {
-		tok = result.(Token)
-	}
-	return tok, err
+	datastore.CollectionName = CollectionName
+	geterr := datastore.GetRecord(filter, &tok)
+	return tok, geterr
 }
 
-func DeleteToken(collectionName string, tokenObj Token) (Token, error) {
+func DeleteToken(domainUuid string, tokenUuid string) (Token, error) {
 	var empty Token
 	err := errors.New("data: token incomplete, need domain id, token id, value")
-	if len(strings.TrimSpace(tokenObj.DomainUuid)) == 0 {
+	if len(strings.TrimSpace(domainUuid)) == 0 {
 		return empty, err
 	}
-	if len(strings.TrimSpace(tokenObj.Uuid)) == 0 {
+	if len(strings.TrimSpace(tokenUuid)) == 0 {
 		return empty, err
 	}
 
+	var tokenObj Token = Token{
+		DomainUuid: domainUuid,
+		Uuid:       tokenUuid,
+		IsDeleted:  true,
+	}
 	if UnitTest {
-		tokenObj.IsDeleted = true
 		return tokenObj, nil
 	}
 
-	filter := datastore.MakeDomainQuery(tokenObj.DomainUuid, "uuid", tokenObj.Uuid, false)
-	datastore.CollectionName = collectionName
-	result, err := datastore.GetRecord(tokenRecordType, filter)
-	if err != nil {
-		return empty, err
+	filter := datastore.MakeDomainQuery(domainUuid, "uuid", tokenUuid, false)
+	datastore.CollectionName = CollectionName
+	geterr := datastore.GetRecord(filter, &tokenObj)
+	if geterr != nil {
+		return empty, geterr
 	}
 
-	var t Token = result.(Token)
-	t.IsDeleted = true
-	updateResult, err := datastore.UpdateRecord(tokenRecordType, filter, "and", t)
+	tokenObj.IsDeleted = true
+	updateResult, err := datastore.UpdateRecord(tokenRecordType, filter, "and", tokenObj)
 	updatedToken := updateResult.(Token)
 	return updatedToken, err
 }
@@ -201,7 +192,6 @@ func CreateMultiTokenQuery(tokenQuery TokenQuery) []datastore.DataQueryGroup {
 	nvq.Operator = "or"
 	nvq.DataQueries = make([]datastore.DataQuery, len(tokenQuery.Uuids))
 	for idx, uuid := range tokenQuery.Uuids {
-		//fmt.Println("Slice item", i, "is", numbers[i])
 		nvq.DataQueries[idx].FieldName = "uuid"
 		nvq.DataQueries[idx].FieldValue = uuid
 		nvq.DataQueries[idx].Wildcard = false
@@ -211,8 +201,8 @@ func CreateMultiTokenQuery(tokenQuery TokenQuery) []datastore.DataQueryGroup {
 	return filters
 }
 
-func GetTokens(collectionName string, domainUuid string) ([]Token, error) {
-	var empty []Token
+func GetTokens(domainUuid string, start int64, limit int64) ([]Token, error) {
+	var empty, tokens []Token
 	err := errors.New("data: need domain id")
 	if len(strings.TrimSpace(domainUuid)) == 0 {
 		return empty, err
@@ -222,22 +212,26 @@ func GetTokens(collectionName string, domainUuid string) ([]Token, error) {
 		return empty, err
 	}
 
-	datastore.CollectionName = collectionName
+	datastore.CollectionName = CollectionName
+	//record := &Token{}
+	//my := &My{}
+	var token Token
 	filter := datastore.MakeSimpleQuery("domainUuid", domainUuid, false)
-	results, err := datastore.GetRecords(tokenRecordType, filter, "and", 0, 100)
-	if err != nil {
+	records, geterr := datastore.GetRecords(filter, "and", start, limit, token)
+	if geterr != nil {
 		return nil, datastore.ErrQueryError
-	} else {
-		tokens := make([]Token, 0)
-		for _, x := range results {
-			tokens = append(tokens, x.(Token))
-		}
-		return tokens, nil
 	}
+
+	for _, x := range records {
+		tokens = append(tokens, x.(Token))
+	}
+
+	return tokens, nil
 }
 
-func GetTokenValues(collectionName string, tokenQuery TokenQuery) ([]string, error) {
+func GetTokenValues(tokenQuery TokenQuery) ([]string, error) {
 	var empty []string
+	//var token Token
 	err := errors.New("data: need domain id")
 	if len(strings.TrimSpace(tokenQuery.DomainUuid)) == 0 {
 		return empty, err
@@ -252,30 +246,38 @@ func GetTokenValues(collectionName string, tokenQuery TokenQuery) ([]string, err
 	}
 
 	filter := CreateMultiTokenQuery(tokenQuery)
-	datastore.CollectionName = collectionName
-	results, err := datastore.GetRecords(tokenRecordType, filter, "and", 0, MaxRecords)
-	if err != nil {
+	datastore.CollectionName = CollectionName
+	var token Token
+	records, geterr := datastore.GetRecords(filter, "and", 0, MaxRecords, token)
+	if geterr != nil {
 		return nil, datastore.ErrQueryError
-	} else {
-		tokenValues := make([]string, 0)
-
-		// return the token values at the same indices as their uuids
-		for _, uuid := range tokenQuery.Uuids {
-			for _, tv := range results {
-				if uuid == tv.(Token).Uuid {
-					tokenValues = append(tokenValues, tv.(Token).Value)
-				}
-			}
-		}
-		return tokenValues, nil
 	}
 
+	tokenValues := make([]string, 0)
+	// return the token values at the same indices as their uuids were presented
+	for _, uuid := range tokenQuery.Uuids {
+		for _, tv := range records {
+			t := tv.(Token)
+			if uuid == t.Uuid {
+				tokenValues = append(tokenValues, t.Value)
+			}
+		}
+	}
+	return tokenValues, nil
+}
+
+func EncryptValue(plaintext string, key string) (string, error) {
+	return crypto.EncryptAES(plaintext, key)
+}
+
+func DecryptValue(encryptedValue string, key string) (string, error) {
+	return crypto.DecryptAES(encryptedValue, key)
 }
 
 func EncryptValues(plaintext []string, key string) []string {
 	encryptedValues := make([]string, 0)
 	for _, plain := range plaintext {
-		encrypted, err := crypto.EncryptAES(plain, key)
+		encrypted, err := EncryptValue(plain, key)
 		if nil == err {
 			encryptedValues = append(encryptedValues, encrypted)
 		}
@@ -286,9 +288,9 @@ func EncryptValues(plaintext []string, key string) []string {
 func DecryptValues(encryptedValues []string, key string) []string {
 	plaintext := make([]string, 0)
 	for _, enc := range encryptedValues {
-		encrypted, err := crypto.DecryptAES(enc, key)
+		decrypted, err := DecryptValue(enc, key)
 		if nil == err {
-			plaintext = append(plaintext, encrypted)
+			plaintext = append(plaintext, decrypted)
 		}
 	}
 	return plaintext

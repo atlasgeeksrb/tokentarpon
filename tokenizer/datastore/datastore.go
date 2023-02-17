@@ -3,12 +3,9 @@
 package datastore
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
+	"reflect"
 	"strings"
-	"time"
-	"tokentarpon/crypto"
 
 	"tokentarpon/tokenizer/datastore/datastoremongo"
 
@@ -19,35 +16,35 @@ import (
 var MaxRecords int64 = 100
 var MongoUri = ""
 var MongoDatabase = ""
-var CollectionName = "community"
+var CollectionName = ""
 
 var tokenVersion string = "001"
 
-type Token struct {
-	Uuid           string `bson:"uuid" json:"uuid"`
-	DomainUuid     string `bson:"domainUuid" json:"domainUuid"`
-	Value          string `bson:"value" json:"value"`
-	EncryptedValue string `bson:"encryptedValue" json:"encryptedValue"`
-	IsDeleted      bool   `json:"isdeleted" bson:"isdeleted"`
-	DocumentType   string `bson:"documentType" json:"documentType"`
-	Version        string `bson:"version" json:"version"`
-	Created        int64  `json:"created" bson:"created"`
-	Updated        int64  `json:"updated" bson:"updated"`
-	Check          string `bson:"check" json:"check"`
-}
+// type Token struct {
+// 	Uuid           string `bson:"uuid" json:"uuid"`
+// 	DomainUuid     string `bson:"domainUuid" json:"domainUuid"`
+// 	Value          string `bson:"value" json:"value"`
+// 	EncryptedValue string `bson:"encryptedValue" json:"encryptedValue"`
+// 	IsDeleted      bool   `json:"isdeleted" bson:"isdeleted"`
+// 	DocumentType   string `bson:"documentType" json:"documentType"`
+// 	Version        string `bson:"version" json:"version"`
+// 	Created        int64  `json:"created" bson:"created"`
+// 	Updated        int64  `json:"updated" bson:"updated"`
+// 	Check          string `bson:"check" json:"check"`
+// }
 
-type Token_v001 struct {
-	Uuid           string `bson:"uuid" json:"uuid"`
-	DomainUuid     string `bson:"domainUuid" json:"domainUuid"`
-	Value          string `bson:"value" json:"value"`
-	EncryptedValue string `bson:"encryptedValue" json:"encryptedValue"`
-	IsDeleted      bool   `json:"isdeleted" bson:"isdeleted"`
-	DocumentType   string `bson:"documentType" json:"documentType"`
-	Version        string `bson:"version" json:"version"`
-	Created        int64  `json:"created" bson:"created"`
-	Updated        int64  `json:"updated" bson:"updated"`
-	Check          string `bson:"check" json:"check"`
-}
+// type Token_v001 struct {
+// 	Uuid           string `bson:"uuid" json:"uuid"`
+// 	DomainUuid     string `bson:"domainUuid" json:"domainUuid"`
+// 	Value          string `bson:"value" json:"value"`
+// 	EncryptedValue string `bson:"encryptedValue" json:"encryptedValue"`
+// 	IsDeleted      bool   `json:"isdeleted" bson:"isdeleted"`
+// 	DocumentType   string `bson:"documentType" json:"documentType"`
+// 	Version        string `bson:"version" json:"version"`
+// 	Created        int64  `json:"created" bson:"created"`
+// 	Updated        int64  `json:"updated" bson:"updated"`
+// 	Check          string `bson:"check" json:"check"`
+// }
 
 // used for querying the db using grouped name-value pairs
 // e.g. DataQueries contains 2 DataQuery values
@@ -77,112 +74,78 @@ var (
 
 // GetRecord takes an incoming query against a target table/collection
 // And returns a single record in the form of an interface
-func GetRecord(recordType string, queryParams []DataQueryGroup) (interface{}, error) {
-
+func GetRecord(queryParams []DataQueryGroup, record interface{}) error {
 	err := datastoremongo.Connect(MongoUri)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
 	filter := CreateMongoFilter(queryParams, "and")
-	result := datastoremongo.GetRecord(MongoDatabase,
-		CollectionName, filter)
-
+	result := datastoremongo.GetRecord(MongoDatabase, CollectionName, filter)
 	if nil == result {
-		return nil, ErrNotFound
+		return ErrNotFound
 	} else if nil != result.Err() {
-		return nil, result.Err()
+		return result.Err()
 	}
-
-	// This is gross
-	// The decode function of mongo.SingleResult understandably
-	// can only mash the data into the correct structure
-	// if it knows what the structure looks like.
-	// So here we use the incoming string that indicates the structure,
-	// use it to determine the structure to decode into, and return that structure,
-	// which Go automagically returns as an interface.
-	// The caller is responsible for forcing the correct/desired type upon the return value.
-
-	//@todo in theory something like this _should_ work
-	// newRecord := reflect.New(recordType).Elem()
-	// mongoerr := result.Decode(&newRecord)
-	// return newRecord, mongoerr
-
-	//recordType reflect.Type
-
-	if recordType == "token" {
-		var u Token
-		mongoerr := result.Decode(&u)
-		return u, mongoerr
-	}
-
-	return nil, ErrQueryError
+	mongoerr := result.Decode(record)
+	return mongoerr
 }
 
 // GetRecords takes an incoming query against a target table/collection
 // And returns an array of records in the form of an array of interfaces
-func GetRecords(recordType string, queryParams []DataQueryGroup,
-	operator string, start int64, limit int64) ([]interface{}, error) {
+func GetRecords(queryParams []DataQueryGroup,
+	operator string, start int64, limit int64, record interface{}) ([]interface{}, error) {
 
-	err := datastoremongo.Connect(MongoUri)
-	if err != nil {
-		return nil, err
+	var results []interface{}
+
+	connecterr := datastoremongo.Connect(MongoUri)
+	if connecterr != nil {
+		return results, ErrDatastoreError
 	}
-	datastoremongo.MaxRecords = MaxRecords
 
 	filter := CreateMongoFilter(queryParams, operator)
 	mongocursor, mongoerr := datastoremongo.GetRecords(MongoDatabase,
 		CollectionName, start, limit, filter)
-
 	if nil != mongoerr {
+		return results, ErrQueryError
+	}
+
+	myType := reflect.TypeOf(record)
+	tokens := reflect.MakeSlice(reflect.SliceOf(myType), 0, 0).Interface()
+	if err := mongocursor.All(datastoremongo.Ctx, &tokens); err != nil {
 		return nil, ErrQueryError
 	}
 
-	// This is gross.
-	// Witchcraft to mash the values from the mongo cursor into the desired structures.
-	// The All function of mongo.Cursor understandably
-	// can only mash the data into the correct structure
-	// if it knows what the structure looks like.
-	// Otherwise you just get a bunch of key-value pairs (key="uuid", value="foo")
-	// So here we use the incoming string that indicates the desired return structure,
-	// use that to conditionally mash the cursor values into the right structures
-	// and then, because the return array of values has to contain generic interfaces,
-	// flip the array values to interfaces before returning results.
-	// The caller is responsible for forcing the correct/desired type upon the return array.
-	var results []interface{}
-	if recordType == "token" {
-		var tokens []Token
-		if err = mongocursor.All(datastoremongo.Ctx, &tokens); err != nil {
-			return nil, ErrQueryError
-		} else {
-			for _, x := range tokens {
-				results = append(results, x)
-			}
-			return results, nil
-		}
+	// because of using reflection we have to repack the results to return
+	tokenValues := reflect.ValueOf(tokens)
+	for i := 0; i < tokenValues.Len(); i++ {
+		v := tokenValues.Index(i).Interface()
+		results = append(results, v)
 	}
-	return nil, ErrQueryError
+	return results, nil
 }
 
-func InsertRecord(recordType string, document interface{}) (interface{}, error) {
+func InsertRecord(recordType string, document interface{}) error {
 
 	err := datastoremongo.Connect(MongoUri)
 	if err != nil {
-		return nil, ErrDatastoreError
+		return ErrDatastoreError
 	}
+
+	datastoremongo.InsertOne(MongoDatabase,
+		CollectionName, document)
 
 	result, err := datastoremongo.InsertOne(MongoDatabase,
 		CollectionName, document)
 	if err != nil {
-		return nil, ErrQueryError
+		return ErrQueryError
 	}
 
 	// Get the whole record-
 	// use the returned InsertedID (bson.ObjectID) from the mongo.InsertOneResult
 	var idString string = hexFromObjectId(result.InsertedID)
 	filter := makeIdQuery(idString)
-	newRecord, geterr := GetRecord(recordType, filter)
-	return newRecord, geterr
+	geterr := GetRecord(filter, &document)
+	return geterr
 }
 
 func DeleteRecord(uuid string) error {
@@ -218,109 +181,111 @@ func UpdateRecord(recordType string,
 	// 	{"$set", bson.D{doc}},
 	// }
 
-	result, err := datastoremongo.UpdateOne(MongoDatabase, CollectionName, filter, "and", document)
-	if err != nil {
-		fmt.Println(result)
+	_, updateerr := datastoremongo.UpdateOne(MongoDatabase, CollectionName, filter, "and", document)
+	if updateerr != nil {
+		//fmt.Println(result)
 		return nil, ErrQueryError
 	}
 	return document, nil
 }
 
-func updateChecksum(recordType string, document interface{}) interface{} {
+// func updateChecksum(recordType string, document interface{}) interface{} {
 
-	// update the Check hash
-	if recordType == "token" {
-		var x Token = document.(Token)
-		x.Updated = time.Now().Unix()
-		if 0 == x.Created {
-			x.Created = x.Updated
-		}
-		x.DocumentType = "token"
-		x.Version = tokenVersion
-		x.Check = ""
-		j, _ := json.Marshal(x)
-		x.Check = crypto.GetHashForByteArray(j)
-		document = x
-	}
-	return document
-}
+// 	// update the Check hash
+// 	if recordType == "token" {
+// 		var x Token = document.(Token)
+// 		x.Updated = time.Now().Unix()
+// 		if x.Created == 0 {
+// 			x.Created = x.Updated
+// 		}
+// 		x.DocumentType = "token"
+// 		x.Version = tokenVersion
+// 		x.Check = ""
+// 		j, _ := json.Marshal(x)
+// 		x.Check = crypto.GetHashForByteArray(j)
+// 		document = x
+// 	}
+// 	return document
+// }
 
-func ValidateChecksum(recordType string, recordId string) (bool, error) {
+// func ValidateChecksum(recordType string, recordId string, record interface{}) (bool, error) {
 
-	var checkOk bool = false
-	var err error = nil
-	var docTypeNotSpecified error = errors.New("Record is missing document type or version")
-	var noSuchTypeErr error = errors.New("Record document type or version not found")
+// 	var checkOk bool = false
+// 	var err error = nil
+// 	var docTypeNotSpecified error = errors.New("Record is missing document type or version")
+// 	var noSuchTypeErr error = errors.New("Record document type or version not found")
 
-	// the document itself contains the DocumentType and Version
-	// we need both of those in order to test the checksum
+// 	// the document itself contains the DocumentType and Version
+// 	// we need both of those in order to test the checksum
 
-	// first we have to load the record into the specified recordType
-	// in order to get the DocumentType and Version
+// 	// first we have to load the record into the specified recordType
+// 	// in order to get the DocumentType and Version
 
-	// then use structure DocumentType_Version to load the document,
-	// marshal it, and generate the checksum to compare to the existing check
+// 	// then use structure DocumentType_Version to load the document,
+// 	// marshal it, and generate the checksum to compare to the existing check
 
-	var existingChecksum string = ""
-	var storedTypeVersion string = ""
+// 	var existingChecksum string = ""
+// 	var storedTypeVersion string = ""
 
-	query := MakeSimpleQuery("uuid", recordId, true)
-	document, err := GetRecord(recordType, query)
-	if err != nil {
-		return checkOk, err
-	}
+// 	query := MakeSimpleQuery("uuid", recordId, true)
+// 	geterr := GetRecord(query, record)
+// 	if geterr != nil {
+// 		return checkOk, geterr
+// 	}
 
-	jsonDoc, err := json.Marshal(document)
+// 	jsonDoc, err := json.Marshal(record)
 
-	if recordType == "token" {
-		var x Token = document.(Token)
-		existingChecksum = x.Check
-		if len(x.DocumentType) == 0 || len(x.Version) == 0 {
-			err = docTypeNotSpecified
-		} else {
-			storedTypeVersion = x.DocumentType + "_v" + x.Version
-			if storedTypeVersion == "token_v001" {
-				var x2 Token_v001
-				json.Unmarshal(jsonDoc, &x2)
+// 	if recordType == "token" {
+// 		var x Token = record.(Token)
+// 		existingChecksum = x.Check
+// 		if len(x.DocumentType) == 0 || len(x.Version) == 0 {
+// 			err = docTypeNotSpecified
+// 		} else {
+// 			storedTypeVersion = x.DocumentType + "_v" + x.Version
+// 			if storedTypeVersion == "token_v001" {
+// 				var x2 Token_v001
+// 				json.Unmarshal(jsonDoc, &x2)
 
-				// unset the check value and marshal back into json
-				// to generate a comparison hash
-				x2.Check = ""
-				j, _ := json.Marshal(x2)
-				x2.Check = crypto.GetHashForByteArray(j)
-				if x2.Check == existingChecksum {
-					checkOk = true
-				}
-			} else {
-				err = noSuchTypeErr
-			}
-		}
-	}
-	return checkOk, err
-}
+// 				// unset the check value and marshal back into json
+// 				// to generate a comparison hash
+// 				x2.Check = ""
+// 				j, _ := json.Marshal(x2)
+// 				x2.Check = crypto.GetHashForByteArray(j)
+// 				if x2.Check == existingChecksum {
+// 					checkOk = true
+// 				}
+// 			} else {
+// 				err = noSuchTypeErr
+// 			}
+// 		}
+// 	}
+// 	return checkOk, err
+// }
 
 // MakeSimpleQuery creates a simple name-value pair and generates
-// the array necessary to call any of the data Get functions
+// the array necessary to call any of the datastore Get functions
 func MakeSimpleQuery(fieldName string, fieldValue string, caseSensitive bool) []DataQueryGroup {
 
 	var filters = make([]DataQueryGroup, 1)
 	var nvq DataQueryGroup
 
 	nvq.Operator = "and"
-	nvq.DataQueries = make([]DataQuery, 1)
+	nvq.DataQueries = make([]DataQuery, 2)
 
 	nvq.DataQueries[0].FieldName = fieldName
 	nvq.DataQueries[0].FieldValue = fieldValue
 	nvq.DataQueries[0].Wildcard = false
 	nvq.DataQueries[0].CaseSensitive = caseSensitive
 
+	nvq.DataQueries[1].FieldName = "isDeleted"
+	nvq.DataQueries[1].BoolValue = false
+	nvq.DataQueries[1].IsBool = true
+
 	filters[0] = nvq
 
 	return filters
 }
 
-// MakeSimpleQuery creates a simple name-value pair and generates
-// the array necessary to call any of the data Get functions
 func MakeDomainQuery(domainUuid string, fieldName string, fieldValue string,
 	caseSensitive bool) []DataQueryGroup {
 
@@ -328,7 +293,7 @@ func MakeDomainQuery(domainUuid string, fieldName string, fieldValue string,
 	var nvq DataQueryGroup
 
 	nvq.Operator = "and"
-	nvq.DataQueries = make([]DataQuery, 2)
+	nvq.DataQueries = make([]DataQuery, 3)
 
 	nvq.DataQueries[0].FieldName = "domainUuid"
 	nvq.DataQueries[0].FieldValue = domainUuid
@@ -340,8 +305,11 @@ func MakeDomainQuery(domainUuid string, fieldName string, fieldValue string,
 	nvq.DataQueries[1].Wildcard = false
 	nvq.DataQueries[1].CaseSensitive = caseSensitive
 
-	filters[0] = nvq
+	nvq.DataQueries[2].FieldName = "isDeleted"
+	nvq.DataQueries[2].BoolValue = false
+	nvq.DataQueries[2].IsBool = true
 
+	filters[0] = nvq
 	return filters
 }
 
@@ -378,6 +346,7 @@ func createSimpleFilter(dataQuery DataQuery) bson.M {
 
 	//if len(strings.TrimSpace(dataQuery.IdValue)) > 0 {
 	//@todo instead check if IdValue has a value
+
 	if len(strings.TrimSpace(dataQuery.IdValue)) > 0 {
 		idVal, err := primitive.ObjectIDFromHex(dataQuery.IdValue)
 		if nil == err {
@@ -385,6 +354,8 @@ func createSimpleFilter(dataQuery DataQuery) bson.M {
 			// bson.ObjectIdHex(dataQuery.IdValue)
 			// bson.ObjectID(dataQuery.IdValue)}
 		}
+	} else if dataQuery.IsBool {
+		bsonQuery = bson.M{dataQuery.FieldName: bson.M{"$eq": dataQuery.BoolValue}}
 	} else if dataQuery.Wildcard {
 		if dataQuery.CaseSensitive {
 			bsonQuery = bson.M{dataQuery.FieldName: bson.M{"$regex": dataQuery.FieldValue}}
@@ -394,7 +365,11 @@ func createSimpleFilter(dataQuery DataQuery) bson.M {
 		}
 	} else {
 		if dataQuery.CaseSensitive {
-			bsonQuery = bson.M{dataQuery.FieldName: dataQuery.FieldValue}
+			if dataQuery.Negate {
+				bsonQuery = bson.M{dataQuery.FieldName: bson.M{"$ne": dataQuery.FieldValue}}
+			} else {
+				bsonQuery = bson.M{dataQuery.FieldName: dataQuery.FieldValue}
+			}
 		} else {
 			// note: no forward slashes!
 			// most of the documentation indicates you should include forward slashes in the regular expression,
@@ -403,6 +378,7 @@ func createSimpleFilter(dataQuery DataQuery) bson.M {
 			bsonQuery = bson.M{dataQuery.FieldName: bson.M{"$regex": "^" + dataQuery.FieldValue + "$", "$options": "i"}}
 		}
 	}
+
 	return bsonQuery
 }
 
@@ -412,7 +388,7 @@ func createComplexFilter(dataQueryGroup DataQueryGroup) bson.M {
 	subQueries := make(bson.A, len(dataQueryGroup.DataQueries))
 
 	for k, v := range dataQueryGroup.DataQueries {
-		//bsonA[k] = createSimpleFilter(v)
+		//bsonA[k] = CreateSimpleFilter(v)
 		subQueries[k] = createSimpleFilter(v)
 	}
 
@@ -430,7 +406,6 @@ func createComplexFilter(dataQueryGroup DataQueryGroup) bson.M {
 
 	return bsonQuery
 }
-
 func hexFromObjectId(id interface{}) string {
 	objectId := id.(primitive.ObjectID)
 	return objectId.Hex()
