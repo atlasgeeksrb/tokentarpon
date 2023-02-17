@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"tokentarpon/tokenizer"
 
 	"github.com/gin-gonic/gin"
@@ -10,26 +11,28 @@ import (
 
 var routerUrl = "localhost:8090"
 var clientUrl = "localhost:3000"
-var encryptionKey = "somefancylongkeyhere234*W&"
+var pageSize int64 = 100
+
+//var encryptionKey = "somefancylongkeyhere234*W&"
 
 func main() {
 
 	router := gin.Default()
 
-	router.POST("/tokens", getTokens)
-	router.PUT("/tokens", createTokens)
-	router.OPTIONS("/tokens", preflight)
+	router.GET("/tokens/:domainId", getTokens)
+	router.PUT("/tokens/:domainId", createTokens)
+	router.OPTIONS("/tokens/:domainId", preflight)
 
-	router.POST("/tokens/values", getTokenValues)
-	router.OPTIONS("/tokens/values", preflight)
+	router.POST("/tokens/:domainId/values", getTokenValues)
+	router.OPTIONS("/tokens/:domainId/values", preflight)
 
-	router.POST("/token", getToken)
-	router.PUT("/token", createToken)
-	router.DELETE("/token", deleteToken)
-	router.OPTIONS("/token", preflight)
+	router.GET("/tokens/:domainId/:id", getToken)
+	router.PUT("/tokens/:domainId/:id", createToken)
+	router.DELETE("/tokens/:domainId/:id", deleteToken)
+	router.OPTIONS("/tokens/:domainId/:id", preflight)
 
-	router.POST("/token/value", getTokenValue)
-	router.OPTIONS("/token/value", preflight)
+	router.GET("/tokens/:domainId/:id/value", getTokenValue)
+	router.OPTIONS("/tokens/:domainId/:id/value", preflight)
 
 	router.Run(routerUrl)
 
@@ -52,16 +55,12 @@ func preflight(c *gin.Context) {
 }
 
 func getToken(c *gin.Context) {
-	var tokenObj tokenizer.Token
+	domainUuid := c.Param("domainId")
+	tokenId := c.Param("id")
 	addHeaders(c)
-	if err := c.BindJSON(&tokenObj); err != nil {
-		c.IndentedJSON(http.StatusUnprocessableEntity, gin.H{"message": "Token is malformed"})
-		return
-	}
-	domainUuid := tokenObj.DomainUuid
-	uuid := tokenObj.Uuid
+
 	//@todo, here we'd query something to figure out the name of the collection to use,
-	tokenObj, err := tokenizer.GetToken(domainUuid, uuid)
+	tokenObj, err := tokenizer.GetToken(domainUuid, tokenId)
 	if err != nil {
 		errmsg := fmt.Sprint(err)
 		// if err == datastore.ErrNotFound {
@@ -77,16 +76,13 @@ func getToken(c *gin.Context) {
 }
 
 func getTokenValue(c *gin.Context) {
-	var tokenObj tokenizer.Token
+	domainUuid := c.Param("domainId")
+	tokenId := c.Param("id")
+
 	addHeaders(c)
-	if err := c.BindJSON(&tokenObj); err != nil {
-		c.IndentedJSON(http.StatusUnprocessableEntity, gin.H{"message": "Token is malformed"})
-		return
-	}
-	domainUuid := tokenObj.DomainUuid
-	uuid := tokenObj.Uuid
+
 	//@todo, here we'd query something to figure out the name of the collection to use,
-	tokenObj, err := tokenizer.GetToken(domainUuid, uuid)
+	tokenObj, err := tokenizer.GetToken(domainUuid, tokenId)
 
 	if err != nil {
 		errmsg := fmt.Sprint(err)
@@ -103,6 +99,8 @@ func getTokenValue(c *gin.Context) {
 }
 
 func createToken(c *gin.Context) {
+	domainUuid := c.Param("domainId")
+
 	var tokenObj tokenizer.Token
 	addHeaders(c)
 	if err := c.BindJSON(&tokenObj); err != nil {
@@ -114,9 +112,9 @@ func createToken(c *gin.Context) {
 	// based on the domain Uuid
 	// e.g. tokenizer.CollectionName = "mycollection"
 	// for now use the shared community store
-	createdToken, mongoerr := tokenizer.CreateToken(tokenObj.DomainUuid, tokenObj.Value)
-	if mongoerr != nil {
-		errmsg := fmt.Sprint(mongoerr)
+	createdToken, dataerr := tokenizer.CreateToken(domainUuid, tokenObj.Value)
+	if dataerr != nil {
+		errmsg := fmt.Sprint(dataerr)
 		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": errmsg})
 	} else {
 		c.IndentedJSON(http.StatusCreated, createdToken)
@@ -124,6 +122,7 @@ func createToken(c *gin.Context) {
 }
 
 func createTokens(c *gin.Context) {
+	domainUuid := c.Param("domainId")
 	var tokens []tokenizer.Token
 	addHeaders(c)
 	if err := c.BindJSON(&tokens); err != nil {
@@ -139,7 +138,6 @@ func createTokens(c *gin.Context) {
 	//@todo, here we'd query something to figure out the name of the collection to use,
 	// based on the domain Uuid
 	// for now use the shared community store
-	var domainUuid = tokens[0].DomainUuid
 	createdTokens, errorTokens := tokenizer.CreateTokens(domainUuid, tokens)
 	if len(errorTokens) > 0 {
 		c.IndentedJSON(http.StatusInternalServerError, errorTokens)
@@ -149,17 +147,14 @@ func createTokens(c *gin.Context) {
 }
 
 func deleteToken(c *gin.Context) {
-	var tokenObj tokenizer.Token
+	domainUuid := c.Param("domainId")
+	tokenId := c.Param("id")
 	addHeaders(c)
-	if err := c.BindJSON(&tokenObj); err != nil {
-		c.IndentedJSON(http.StatusUnprocessableEntity, gin.H{"message": "Token record malformed"})
-		return
-	}
 
 	//@todo, here we'd query something to figure out the name of the collection to use,
 	// based on the domain Uuid
 	// for now use the shared community store
-	_, err := tokenizer.DeleteToken(tokenObj)
+	_, err := tokenizer.DeleteToken(domainUuid, tokenId)
 	if err != nil {
 		errmsg := fmt.Sprint(err)
 		c.IndentedJSON(http.StatusForbidden, gin.H{"message": errmsg})
@@ -169,14 +164,12 @@ func deleteToken(c *gin.Context) {
 }
 
 func getTokens(c *gin.Context) {
-	var tokenObj tokenizer.Token
+	domainUuid := c.Param("domainId")
+	start, limit := getPageParams(c)
 	addHeaders(c)
-	if err := c.BindJSON(&tokenObj); err != nil {
-		c.IndentedJSON(http.StatusUnprocessableEntity, gin.H{"message": "Token record malformed"})
-		return
-	}
+
 	//@todo, here we'd query something to figure out the name of the collection to use,
-	tokens, err := tokenizer.GetTokens(tokenObj.DomainUuid)
+	tokens, err := tokenizer.GetTokens(domainUuid, start, limit)
 	if err != nil {
 		errmsg := fmt.Sprint(err)
 		c.IndentedJSON(http.StatusNotAcceptable, gin.H{"message": errmsg})
@@ -186,6 +179,8 @@ func getTokens(c *gin.Context) {
 }
 
 func getTokenValues(c *gin.Context) {
+	//domainUuid := c.Param("domainId")
+	//start, limit := getPageParams(c)
 	var tokenQuery tokenizer.TokenQuery
 	addHeaders(c)
 	if err := c.BindJSON(&tokenQuery); err != nil {
@@ -201,4 +196,31 @@ func getTokenValues(c *gin.Context) {
 	} else {
 		c.JSON(http.StatusOK, tokenValues)
 	}
+}
+
+func getPageParams(c *gin.Context) (int64, int64) {
+	// get start, limit from queryparams
+	var start int64
+	var limit int64
+	if startparam, ok := c.GetQuery("start"); ok {
+		i, err := strconv.ParseInt(startparam, 10, 64)
+		if err == nil {
+			if i < 0 {
+				i = 0
+			} else {
+				start = i
+			}
+		} else {
+			i = 0
+		}
+	}
+	if limitparam, ok := c.GetQuery("limit"); ok {
+		i, err := strconv.ParseInt(limitparam, 10, 64)
+		if err == nil {
+			limit = i
+		}
+	} else {
+		limit = pageSize
+	}
+	return start, limit
 }
