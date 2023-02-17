@@ -13,14 +13,13 @@ TokenTarpon is an API providing tokenization with optional encryption. Calling a
 - implement JWT
 
 ## Routes
-PUT a token /tokens/:domainId
-GET a token /tokens/:domainId/:id
-GET token value /tokens/:domainId/:id/value
-DELETE the specified token /tokens/:domainId/:id
-
-PUT several tokens /tokens/:domainId/:id
-GET tokens for domain tokens/tokens/:domainId
-POST a query to get multiple token values /tokens/:domainId/values
+- PUT a token /tokens/:domainId
+- GET a token /tokens/:domainId/:id
+- GET token value /tokens/:domainId/:id/value
+- DELETE the specified token /tokens/:domainId/:id
+- PUT several tokens /tokens/:domainId/:id
+- GET tokens for domain tokens/tokens/:domainId
+- POST a query to get multiple token values /tokens/:domainId/values
 
 The last two routes, to get tokens and get token values, optionally takey start and limit parameters in the querystring for pagination.
 
