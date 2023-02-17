@@ -1,0 +1,13 @@
+version: "2.13" 
+
+services:
+  backend:
+    image: tokentarpon:001
+    build: .
+    ports:
+      - "8091:8090" # map a host port to the container port for the app
+    networks:
+      - back-tier
+
+networks:
+  back-tier: {}
