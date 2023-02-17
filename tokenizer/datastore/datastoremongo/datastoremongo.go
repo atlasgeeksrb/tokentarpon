@@ -110,10 +110,10 @@ func DeleteCollectionRecords(dataBase string, collectionName string, filter bson
 	return err
 }
 
-func GetRecords(dataBase string, collectionName string,
+func GetRecords(database string, collectionName string,
 	start int64, limit int64, filter bson.M) (*mongo.Cursor, error) {
 
-	collection := Client.Database(dataBase).Collection(collectionName)
+	collection := Client.Database(database).Collection(collectionName)
 
 	if start < 0 {
 		start = 0
@@ -126,13 +126,14 @@ func GetRecords(dataBase string, collectionName string,
 		Skip:  &start,
 		Limit: &limit,
 	}
+
 	cursor, err := collection.Find(Ctx, filter, &findOptions)
 
 	return cursor, err
 }
 
-func GetRecord(dataBase string, collectionName string, filter bson.M) *mongo.SingleResult {
-	collection := Client.Database(dataBase).Collection(collectionName)
+func GetRecord(database string, collectionName string, filter bson.M) *mongo.SingleResult {
+	collection := Client.Database(database).Collection(collectionName)
 	result := collection.FindOne(Ctx, filter)
 	return result
 }
