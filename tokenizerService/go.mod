@@ -33,16 +33,19 @@ require (
 	golang.org/x/text v0.5.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	tokentarpon/crypto v0.0.0-00010101000000-000000000000 // indirect
+	tokentarpon/tokencrypto v0.0.0-00010101000000-000000000000 // indirect
 	tokentarpon/tokenizer v0.0.0-00010101000000-000000000000 // indirect
 	tokentarpon/tokenizer/datastore v0.0.0-00010101000000-000000000000 // indirect
 	tokentarpon/tokenizer/datastore/datastoremongo v0.0.0 // indirect
+	tokentarpon/tokenizer/systemconfig v0.0.0-00010101000000-000000000000 // indirect
 )
 
 replace tokentarpon/tokenizer => ../tokenizer
 
-replace tokentarpon/crypto => ../crypto
+replace tokentarpon/tokencrypto => ../tokencrypto
 
 replace tokentarpon/tokenizer/datastore => ../tokenizer/datastore
 
 replace tokentarpon/tokenizer/datastore/datastoremongo => ../tokenizer/datastore/datastoremongo
+
+replace tokentarpon/tokenizer/systemconfig => ../tokenizer/systemconfig

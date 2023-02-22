@@ -1,0 +1,9 @@
+{
+    "TokenizerServiceUrl": "localhost:8090",
+    "TokenizerServiceApiMode": "debug",
+    "CORSAllowOrigin": "http://localhost:3000",
+    "EncryptionKey": "must be either 16, 24, or 32 bytes to select AES-128, AES-192, or AES-256",
+    "MongoUri": "mongodb://myuser:mypassword@localhost:27017/mydb",
+    "MongoDatabase": "mydb",
+    "PageRecordCount": 100
+}

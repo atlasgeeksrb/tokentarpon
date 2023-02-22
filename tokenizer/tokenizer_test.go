@@ -27,7 +27,7 @@ func TestCreateToken(t *testing.T) {
 		},
 	}
 
-	Test = true
+	UnitTest = true
 	for i, scenario := range testScenarios {
 
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
@@ -74,12 +74,12 @@ func TestCreateToken(t *testing.T) {
 }
 
 func TestDeleteToken(t *testing.T) {
-	Test = true
+	UnitTest = true
 	t.Fatal("argggh")
 }
 
 func TestGetToken(t *testing.T) {
-	Test = true
+	UnitTest = true
 	t.Fatal("argggh")
 }
 

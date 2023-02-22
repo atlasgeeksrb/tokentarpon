@@ -8,43 +8,19 @@ import (
 	"strings"
 
 	"tokentarpon/tokenizer/datastore/datastoremongo"
+	"tokentarpon/tokenizer/systemconfig"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-var MaxRecords int64 = 100
-var MongoUri = ""
-var MongoDatabase = ""
-var CollectionName = ""
+var PageRecordCount int64 = 100
+var CollectionName = "community"
 
-var tokenVersion string = "001"
+var mongoUri = ""
+var mongoDatabase = ""
 
-// type Token struct {
-// 	Uuid           string `bson:"uuid" json:"uuid"`
-// 	DomainUuid     string `bson:"domainUuid" json:"domainUuid"`
-// 	Value          string `bson:"value" json:"value"`
-// 	EncryptedValue string `bson:"encryptedValue" json:"encryptedValue"`
-// 	IsDeleted      bool   `json:"isdeleted" bson:"isdeleted"`
-// 	DocumentType   string `bson:"documentType" json:"documentType"`
-// 	Version        string `bson:"version" json:"version"`
-// 	Created        int64  `json:"created" bson:"created"`
-// 	Updated        int64  `json:"updated" bson:"updated"`
-// 	Check          string `bson:"check" json:"check"`
-// }
-
-// type Token_v001 struct {
-// 	Uuid           string `bson:"uuid" json:"uuid"`
-// 	DomainUuid     string `bson:"domainUuid" json:"domainUuid"`
-// 	Value          string `bson:"value" json:"value"`
-// 	EncryptedValue string `bson:"encryptedValue" json:"encryptedValue"`
-// 	IsDeleted      bool   `json:"isdeleted" bson:"isdeleted"`
-// 	DocumentType   string `bson:"documentType" json:"documentType"`
-// 	Version        string `bson:"version" json:"version"`
-// 	Created        int64  `json:"created" bson:"created"`
-// 	Updated        int64  `json:"updated" bson:"updated"`
-// 	Check          string `bson:"check" json:"check"`
-// }
+//var tokenVersion string = "001"
 
 // used for querying the db using grouped name-value pairs
 // e.g. DataQueries contains 2 DataQuery values
@@ -75,12 +51,17 @@ var (
 // GetRecord takes an incoming query against a target table/collection
 // And returns a single record in the form of an interface
 func GetRecord(queryParams []DataQueryGroup, record interface{}) error {
-	err := datastoremongo.Connect(MongoUri)
+
+	if err := getConfiguration(); err != nil {
+		return err
+	}
+
+	err := datastoremongo.Connect(mongoUri)
 	if err != nil {
 		return err
 	}
 	filter := CreateMongoFilter(queryParams, "and")
-	result := datastoremongo.GetRecord(MongoDatabase, CollectionName, filter)
+	result := datastoremongo.GetRecord(mongoDatabase, CollectionName, filter)
 	if nil == result {
 		return ErrNotFound
 	} else if nil != result.Err() {
@@ -97,22 +78,27 @@ func GetRecords(queryParams []DataQueryGroup,
 
 	var results []interface{}
 
-	connecterr := datastoremongo.Connect(MongoUri)
+	if err := getConfiguration(); err != nil {
+		return results, err
+	}
+
+	connecterr := datastoremongo.Connect(mongoUri)
 	if connecterr != nil {
 		return results, ErrDatastoreError
 	}
+	datastoremongo.PageRecordCount = PageRecordCount
 
 	filter := CreateMongoFilter(queryParams, operator)
-	mongocursor, mongoerr := datastoremongo.GetRecords(MongoDatabase,
+	mongocursor, mongoerr := datastoremongo.GetRecords(mongoDatabase,
 		CollectionName, start, limit, filter)
 	if nil != mongoerr {
-		return results, ErrQueryError
+		return results, mongoerr //ErrQueryError
 	}
 
 	myType := reflect.TypeOf(record)
 	tokens := reflect.MakeSlice(reflect.SliceOf(myType), 0, 0).Interface()
 	if err := mongocursor.All(datastoremongo.Ctx, &tokens); err != nil {
-		return nil, ErrQueryError
+		return nil, err //ErrQueryError
 	}
 
 	// because of using reflection we have to repack the results to return
@@ -126,18 +112,22 @@ func GetRecords(queryParams []DataQueryGroup,
 
 func InsertRecord(recordType string, document interface{}) error {
 
-	err := datastoremongo.Connect(MongoUri)
+	if err := getConfiguration(); err != nil {
+		return err
+	}
+
+	err := datastoremongo.Connect(mongoUri)
 	if err != nil {
 		return ErrDatastoreError
 	}
 
-	datastoremongo.InsertOne(MongoDatabase,
+	datastoremongo.InsertOne(mongoDatabase,
 		CollectionName, document)
 
-	result, err := datastoremongo.InsertOne(MongoDatabase,
+	result, err := datastoremongo.InsertOne(mongoDatabase,
 		CollectionName, document)
 	if err != nil {
-		return ErrQueryError
+		return err //ErrQueryError
 	}
 
 	// Get the whole record-
@@ -149,21 +139,30 @@ func InsertRecord(recordType string, document interface{}) error {
 }
 
 func DeleteRecord(uuid string) error {
-	err := datastoremongo.Connect(MongoUri)
+	if err := getConfiguration(); err != nil {
+		return err
+	}
+
+	err := datastoremongo.Connect(mongoUri)
 	if err != nil {
 		return err
 	}
-	mongoerr := datastoremongo.DeleteRecordByUuid(MongoDatabase, CollectionName, uuid)
+	mongoerr := datastoremongo.DeleteRecordByUuid(mongoDatabase, CollectionName, uuid)
 	return mongoerr
 }
 
 func DeleteRecords(queryParams []DataQueryGroup, operator string) error {
-	err := datastoremongo.Connect(MongoUri)
+	if err := getConfiguration(); err != nil {
+		return err
+	}
+
+	err := datastoremongo.Connect(mongoUri)
 	if err != nil {
 		return err
 	}
+	datastoremongo.PageRecordCount = PageRecordCount
 	filter := CreateMongoFilter(queryParams, operator)
-	mongoerr := datastoremongo.DeleteCollectionRecords(MongoDatabase, CollectionName, filter)
+	mongoerr := datastoremongo.DeleteCollectionRecords(mongoDatabase, CollectionName, filter)
 	return mongoerr
 }
 
@@ -171,7 +170,11 @@ func UpdateRecord(recordType string,
 	queryParams []DataQueryGroup, operator string,
 	document interface{}) (interface{}, error) {
 
-	err := datastoremongo.Connect(MongoUri)
+	if err := getConfiguration(); err != nil {
+		return document, err
+	}
+
+	err := datastoremongo.Connect(mongoUri)
 	if err != nil {
 		return nil, ErrDatastoreError
 	}
@@ -181,10 +184,10 @@ func UpdateRecord(recordType string,
 	// 	{"$set", bson.D{doc}},
 	// }
 
-	_, updateerr := datastoremongo.UpdateOne(MongoDatabase, CollectionName, filter, "and", document)
+	_, updateerr := datastoremongo.UpdateOne(mongoDatabase, CollectionName, filter, "and", document)
 	if updateerr != nil {
 		//fmt.Println(result)
-		return nil, ErrQueryError
+		return nil, updateerr //ErrQueryError
 	}
 	return document, nil
 }
@@ -202,7 +205,7 @@ func UpdateRecord(recordType string,
 // 		x.Version = tokenVersion
 // 		x.Check = ""
 // 		j, _ := json.Marshal(x)
-// 		x.Check = crypto.GetHashForByteArray(j)
+// 		x.Check = tokencrypto.GetHashForByteArray(j)
 // 		document = x
 // 	}
 // 	return document
@@ -250,7 +253,7 @@ func UpdateRecord(recordType string,
 // 				// to generate a comparison hash
 // 				x2.Check = ""
 // 				j, _ := json.Marshal(x2)
-// 				x2.Check = crypto.GetHashForByteArray(j)
+// 				x2.Check = tokencrypto.GetHashForByteArray(j)
 // 				if x2.Check == existingChecksum {
 // 					checkOk = true
 // 				}
@@ -425,4 +428,14 @@ func makeIdQuery(id string) []DataQueryGroup {
 	filters[0] = nvq
 
 	return filters
+}
+
+func getConfiguration() error {
+	configuration, configerr := systemconfig.Load()
+	if configerr != nil {
+		return configerr
+	}
+	mongoUri = configuration.MongoUri
+	mongoDatabase = configuration.MongoDatabase
+	return nil
 }

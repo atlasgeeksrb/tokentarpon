@@ -1,22 +1,39 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"tokentarpon/tokenizer"
+	"tokentarpon/tokenizer/systemconfig"
 
 	"github.com/gin-gonic/gin"
 )
 
-var routerUrl = "localhost:8090"
-var clientUrl = "localhost:3000"
-var pageSize int64 = 100
+var configuration systemconfig.Configuration
 
-//var encryptionKey = "somefancylongkeyhere234*W&"
+// var hostname = "localhost"
+// var tokenizerServiceUrl = hostname + ":8090"
+// var tokenizerServiceApiMode = "dev"
+// var clientUrl = hostname + ":3000"
+// var pageRecordCount int64 = 100
 
 func main() {
 
+	configerr := errors.New("configuration error")
+	configuration, configerr = systemconfig.Load()
+	if configerr != nil {
+		fmt.Println("Cannot start service, configuration needs love:")
+		fmt.Printf("\n%s", fmt.Sprint(configerr))
+		return
+	}
+
+	if configuration.TokenizerServiceApiMode == "production" {
+		gin.SetMode(gin.ReleaseMode)
+	} else {
+		fmt.Println("API running in %s mode", configuration.TokenizerServiceApiMode)
+	}
 	router := gin.Default()
 
 	router.GET("/tokens/:domainId", getTokens)
@@ -34,18 +51,21 @@ func main() {
 	router.GET("/tokens/:domainId/:id/value", getTokenValue)
 	router.OPTIONS("/tokens/:domainId/:id/value", preflight)
 
-	router.Run(routerUrl)
+	router.GET("/echo", echoEcho)
+	router.OPTIONS("/echo", preflight)
+
+	router.Run(configuration.TokenizerServiceUrl)
 
 }
 
 func addOptionsHeaders(c *gin.Context) {
-	c.Header("Access-Control-Allow-Origin", clientUrl) //"*"
+	c.Header("Access-Control-Allow-Origin", configuration.CORSAllowOrigin) //"*"
 	c.Header("Access-Control-Allow-Headers", "access-control-allow-origin, access-control-allow-headers,x-auth-token,content-type")
 	c.Header("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,DELETE,PUT")
 }
 
 func addHeaders(c *gin.Context) {
-	c.Header("Access-Control-Allow-Origin", clientUrl) //"*"
+	c.Header("Access-Control-Allow-Origin", configuration.CORSAllowOrigin) //"*"
 	c.Header("Access-Control-Expose-Headers", "x-auth-token")
 }
 
@@ -198,6 +218,10 @@ func getTokenValues(c *gin.Context) {
 	}
 }
 
+func echoEcho(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"result": "ok"})
+}
+
 func getPageParams(c *gin.Context) (int64, int64) {
 	// get start, limit from queryparams
 	var start int64
@@ -220,7 +244,7 @@ func getPageParams(c *gin.Context) (int64, int64) {
 			limit = i
 		}
 	} else {
-		limit = pageSize
+		limit = configuration.PageRecordCount
 	}
 	return start, limit
 }

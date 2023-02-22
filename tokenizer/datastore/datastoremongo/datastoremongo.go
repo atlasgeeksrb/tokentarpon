@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
-var MaxRecords int64 = 100
+var PageRecordCount int64 = 100
 var Client *mongo.Client
 var Ctx context.Context
 var Cancel context.CancelFunc
@@ -118,8 +118,8 @@ func GetRecords(database string, collectionName string,
 	if start < 0 {
 		start = 0
 	}
-	if limit > MaxRecords {
-		limit = MaxRecords
+	if limit > PageRecordCount {
+		limit = PageRecordCount
 	}
 
 	findOptions := options.FindOptions{

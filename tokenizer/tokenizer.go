@@ -5,16 +5,18 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"tokentarpon/crypto"
+	"tokentarpon/tokencrypto"
 	"tokentarpon/tokenizer/datastore"
+	"tokentarpon/tokenizer/systemconfig"
 
 	"github.com/google/uuid"
 )
 
-var DefaultMaxLength int = 255
-var MaxRecords int64 = 100
 var UnitTest = false
+
+var defaultPageRecordCount int64 = 100
 var tokenRecordType = "token"
+var encryptionKey = ""
 
 type Token struct {
 	Uuid           string `bson:"uuid" json:"uuid"`
@@ -212,14 +214,16 @@ func GetTokens(domainUuid string, start int64, limit int64) ([]Token, error) {
 		return empty, err
 	}
 
+	pageRecordCount := getPageRecordCount()
 	datastore.CollectionName = CollectionName
+	datastore.PageRecordCount = pageRecordCount
 	//record := &Token{}
 	//my := &My{}
 	var token Token
 	filter := datastore.MakeSimpleQuery("domainUuid", domainUuid, false)
 	records, geterr := datastore.GetRecords(filter, "and", start, limit, token)
 	if geterr != nil {
-		return nil, datastore.ErrQueryError
+		return nil, geterr
 	}
 
 	for _, x := range records {
@@ -247,10 +251,12 @@ func GetTokenValues(tokenQuery TokenQuery) ([]string, error) {
 
 	filter := CreateMultiTokenQuery(tokenQuery)
 	datastore.CollectionName = CollectionName
+	pageRecordCount := getPageRecordCount()
+	datastore.PageRecordCount = pageRecordCount
 	var token Token
-	records, geterr := datastore.GetRecords(filter, "and", 0, MaxRecords, token)
+	records, geterr := datastore.GetRecords(filter, "and", 0, pageRecordCount, token)
 	if geterr != nil {
-		return nil, datastore.ErrQueryError
+		return nil, geterr
 	}
 
 	tokenValues := make([]string, 0)
@@ -266,18 +272,20 @@ func GetTokenValues(tokenQuery TokenQuery) ([]string, error) {
 	return tokenValues, nil
 }
 
-func EncryptValue(plaintext string, key string) (string, error) {
-	return crypto.EncryptAES(plaintext, key)
+func EncryptValue(plaintext string) (string, error) {
+	getEncryptionKey()
+	return tokencrypto.EncryptAES(plaintext, encryptionKey)
 }
 
-func DecryptValue(encryptedValue string, key string) (string, error) {
-	return crypto.DecryptAES(encryptedValue, key)
+func DecryptValue(encryptedValue string) (string, error) {
+	getEncryptionKey()
+	return tokencrypto.DecryptAES(encryptedValue, encryptionKey)
 }
 
-func EncryptValues(plaintext []string, key string) []string {
+func EncryptValues(plaintext []string) []string {
 	encryptedValues := make([]string, 0)
 	for _, plain := range plaintext {
-		encrypted, err := EncryptValue(plain, key)
+		encrypted, err := EncryptValue(plain)
 		if nil == err {
 			encryptedValues = append(encryptedValues, encrypted)
 		}
@@ -285,13 +293,35 @@ func EncryptValues(plaintext []string, key string) []string {
 	return encryptedValues
 }
 
-func DecryptValues(encryptedValues []string, key string) []string {
+func DecryptValues(encryptedValues []string) []string {
 	plaintext := make([]string, 0)
 	for _, enc := range encryptedValues {
-		decrypted, err := DecryptValue(enc, key)
+		decrypted, err := DecryptValue(enc)
 		if nil == err {
 			plaintext = append(plaintext, decrypted)
 		}
 	}
 	return plaintext
+}
+
+func getPageRecordCount() int64 {
+	configuration, configerr := systemconfig.Load()
+	if configerr != nil {
+		return defaultPageRecordCount
+	}
+	return configuration.PageRecordCount
+}
+
+func getEncryptionKey() error {
+	// don't keep getting the key if we already got it
+	if len(encryptionKey) > 0 {
+		return nil
+	}
+
+	configuration, configerr := systemconfig.Load()
+	if configerr != nil {
+		return configerr
+	}
+	encryptionKey = configuration.EncryptionKey
+	return nil
 }

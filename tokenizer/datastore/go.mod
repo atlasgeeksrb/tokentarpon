@@ -19,9 +19,11 @@ require (
 	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/text v0.3.7 // indirect
-	tokentarpon/crypto v0.0.0-00010101000000-000000000000 // indirect
+	tokentarpon/tokencrypto v0.0.0-00010101000000-000000000000 // indirect
 )
 
 replace tokentarpon/tokenizer/datastore/datastoremongo => ./datastoremongo
 
-replace tokentarpon/crypto => ../../crypto
+replace tokentarpon/tokenizer/systemconfig => ../systemconfig
+
+replace tokentarpon/tokencrypto => ../../tokencrypto
