@@ -1,13 +1,40 @@
 version: "2.13" 
 
 services:
-  backend:
-    image: tokentarpon:001
+  tokenizer:
+    image: tokentarpon:v1
+    container_name: tokentarpon
     build: .
     ports:
-      - "8091:8090" # map a host port to the container port for the app
+      - 8092:8090
     networks:
-      - back-tier
+      - services
+    links:
+      - mongodb:mongodb
+    depends_on:
+      - mongodb
+
+  mongodb:
+    image: mongo:4.4-rc
+    container_name: mongodb
+    restart: on-failure
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    networks:
+      - services
+    ports:
+      - 27017
+    volumes:
+      - mongodb-data:/data/db
+      - mongodb-log:/var/log/mongodb
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+
+volumes:
+  mongodb-data:
+    driver: local
+  mongodb-log:
+    driver: local
 
 networks:
-  back-tier: {}
+  services: {}
