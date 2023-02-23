@@ -8,10 +8,10 @@ Post a string and receive a UUID, and then store the UUID rather than storing th
 - use Git to pull latest
 - update settings
   - modify docker-compose.yml
-    - set a strong password for the root mondodb user
+    - set a strong password for the root mongodb user
     - if desired, change the host's port from 8092
   - modify config.json
-    - set the EncryptionKey
+    - set the EncryptionKey, used when encrypting stored values
     - set the mongodb settings (myuser, mypassword, mydb)
   - modify mongoinit.js
     - change myuser, mypassword, mydb to match the settings in config.json
