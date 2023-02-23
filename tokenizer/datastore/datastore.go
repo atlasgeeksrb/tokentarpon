@@ -121,9 +121,6 @@ func InsertRecord(recordType string, document interface{}) error {
 		return ErrDatastoreError
 	}
 
-	datastoremongo.InsertOne(mongoDatabase,
-		CollectionName, document)
-
 	result, err := datastoremongo.InsertOne(mongoDatabase,
 		CollectionName, document)
 	if err != nil {
