@@ -1,16 +1,12 @@
-db.createCollection('community');
+db.createCollection('mydb');
 db.createUser(
     {
-        user: 'tarponuser',
-        pwd: 'strongpassword',
+        user: 'myuser',
+        pwd: 'mypassword',
         roles: [
             {
-                role: 'read',
-                db: 'admin'
-            },
-            {
                 role: 'readWrite',
-                db: 'community'
+                db: 'mydb'
             }
         ]
     }
