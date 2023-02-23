@@ -4,6 +4,20 @@ TokenTarpon is a service providing tokenization with optional encryption. Callin
 
 Post a string and receive a UUID, and then store the UUID rather than storing the sensitive text value. When the text value is needed, post the UUID and receive the text value. Callers can also send an array of values, and retrieve an array of values.
 
+## How to Use
+- use Git to pull latest
+- update settings
+  - modify docker-compose.yml
+    - set a strong password for the root mondodb user
+    - if desired, change the host's port from 8092
+  - modify config.json
+    - set the EncryptionKey
+    - set the mongodb settings (myuser, mypassword, mydb)
+  - modify mongoinit.js
+    - change myuser, mypassword, mydb to match the settings in config.json
+- start containers
+  `docker compose up`
+
 ## TODO
 - duplicate tokens are generated
 - provide Postman tests, Swagger docs
