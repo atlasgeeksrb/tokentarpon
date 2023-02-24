@@ -6,7 +6,7 @@ services:
     container_name: tokentarpon
     build: .
     ports:
-      - 8092:8090
+      - 8080:8090
     networks:
       - services
     links:
