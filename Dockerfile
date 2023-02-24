@@ -17,7 +17,7 @@ WORKDIR /var/tokenapp/tokenizerService
 COPY --from=build /usr/local/go/src/tokenizerService .
 
 WORKDIR /var/tokenapp
-COPY --from=build /usr/local/go/src/config_prod.json ./config.json
+COPY --from=build /usr/local/go/src/config.json ./config.json
 
 RUN chown -R app:app /var/tokenapp
 USER app
